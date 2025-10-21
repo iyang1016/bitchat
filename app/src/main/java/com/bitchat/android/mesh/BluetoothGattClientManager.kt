@@ -6,6 +6,7 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import com.bitchat.android.protocol.BitchatPacket
@@ -393,15 +394,23 @@ class BluetoothGattClientManager(
         val deviceAddress = device.address
         Log.i(TAG, "Connecting to bitchat device: $deviceAddress")
         
-        val gattCallback = object : BluetoothGattCallback() {
+        val gattCallback = object : CodedPhyManager.CodedPhyGattCallback() {
             override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
                 Log.d(TAG, "Client: Connection state change - Device: $deviceAddress, Status: $status, NewState: $newState")
 
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                     Log.i(TAG, "Client: Successfully connected to $deviceAddress. Requesting MTU...")
-                    // Request a larger MTU. Must be done before any data transfer.
+                    
                     connectionScope.launch {
                         delay(200) // A small delay can improve reliability of MTU request.
+                        
+                        // Request LE Coded PHY for extended range if supported and power allows
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && 
+                            powerManager.getCodedPhyManager().shouldUseCodedPhy(powerManager.getCurrentMode())) {
+                            powerManager.getCodedPhyManager().requestCodedPhy(gatt, preferS8 = false)
+                        }
+                        
+                        // Request a larger MTU. Must be done before any data transfer.
                         gatt.requestMtu(517)
                     }
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
@@ -522,6 +531,22 @@ class BluetoothGattClientManager(
                 } else {
                     Log.w(TAG, "Client: Failed to read RSSI for $deviceAddress, status: $status")
                 }
+            }
+            
+            // LE Coded PHY callback implementations
+            override fun onCodedPhyActivated(gatt: BluetoothGatt?, txPhy: Int, rxPhy: Int) {
+                Log.i(TAG, "✅ LE Coded PHY activated for ${gatt?.device?.address} - Extended range enabled")
+                // Coded PHY is now active - connection has extended range capability
+            }
+            
+            override fun onCodedPhyFailed(gatt: BluetoothGatt?, status: Int) {
+                Log.w(TAG, "⚠️ LE Coded PHY activation failed for ${gatt?.device?.address}: status=$status")
+                // Fall back to standard 1M PHY - connection still works but with normal range
+            }
+            
+            override fun onPhyStatus(gatt: BluetoothGatt?, txPhy: Int, rxPhy: Int) {
+                // Log current PHY status for debugging
+                Log.d(TAG, "PHY status for ${gatt?.device?.address}: TX=$txPhy, RX=$rxPhy")
             }
         }
         

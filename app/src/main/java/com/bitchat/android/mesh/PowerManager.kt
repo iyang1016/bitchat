@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlin.math.max
@@ -47,6 +48,11 @@ class PowerManager(private val context: Context) {
     }
     
     private var currentMode = PowerMode.BALANCED
+    
+    /**
+     * Get current power mode
+     */
+    fun getCurrentMode(): PowerMode = currentMode
     private var isCharging = false
     private var batteryLevel = 100
     private var isAppInBackground = false
@@ -55,6 +61,9 @@ class PowerManager(private val context: Context) {
     private var dutyCycleJob: Job? = null
     
     var delegate: PowerManagerDelegate? = null
+    
+    // LE Coded PHY support
+    private val codedPhyManager = CodedPhyManager(context)
     
     // Battery monitoring
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -110,7 +119,7 @@ class PowerManager(private val context: Context) {
     }
     
     /**
-     * Get scan settings optimized for current power mode
+     * Get scan settings optimized for current power mode with LE Coded PHY support
      */
     fun getScanSettings(): ScanSettings {
         val builder = ScanSettings.Builder()
@@ -138,14 +147,22 @@ class PowerManager(private val context: Context) {
                 .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
         }
 
-        return builder.setReportDelay(0).build()
+        val baseScanSettings = builder.setReportDelay(0).build()
+        
+        // Apply LE Coded PHY if supported, Android 8.0+, and power mode allows
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && 
+                   codedPhyManager.shouldUseCodedPhy(currentMode)) {
+            codedPhyManager.getCodedPhyScanSettings(baseScanSettings)
+        } else {
+            baseScanSettings
+        }
     }
     
     /**
-     * Get advertising settings optimized for current power mode
+     * Get advertising settings optimized for current power mode with LE Coded PHY support
      */
     fun getAdvertiseSettings(): AdvertiseSettings {
-        return when (currentMode) {
+        val baseSettings = when (currentMode) {
             PowerMode.PERFORMANCE -> AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
@@ -173,6 +190,14 @@ class PowerManager(private val context: Context) {
                 .setConnectable(true)
                 .setTimeout(0)
                 .build()
+        }
+        
+        // Apply LE Coded PHY if supported, Android 8.0+, and power mode allows
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && 
+                   codedPhyManager.shouldUseCodedPhy(currentMode)) {
+            codedPhyManager.getCodedPhyAdvertiseSettings(baseSettings)
+        } else {
+            baseSettings
         }
     }
     
@@ -208,7 +233,7 @@ class PowerManager(private val context: Context) {
     }
     
     /**
-     * Get current power mode information
+     * Get current power mode information including LE Coded PHY status
      */
     fun getPowerInfo(): String {
         return buildString {
@@ -220,8 +245,15 @@ class PowerManager(private val context: Context) {
             appendLine("Max Connections: ${getMaxConnections()}")
             appendLine("RSSI Threshold: ${getRSSIThreshold()} dBm")
             appendLine("Use Duty Cycle: ${shouldUseDutyCycle()}")
+            appendLine()
+            append(codedPhyManager.getStatusInfo())
         }
     }
+    
+    /**
+     * Get LE Coded PHY manager for advanced configuration
+     */
+    fun getCodedPhyManager(): CodedPhyManager = codedPhyManager
     
     private fun updatePowerMode() {
         val newMode = when {

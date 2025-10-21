@@ -6,6 +6,7 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
+import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import com.bitchat.android.protocol.BitchatPacket
@@ -167,6 +168,27 @@ class BluetoothGattServerManager(
                 when (newState) {
                     BluetoothProfile.STATE_CONNECTED -> {
                         Log.i(TAG, "Server: Device connected ${device.address}")
+                        
+                        // Request LE Coded PHY for extended range if supported
+                        connectionScope.launch {
+                            delay(500) // Allow connection to stabilize
+                            
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && 
+                                powerManager.getCodedPhyManager().shouldUseCodedPhy(powerManager.getCurrentMode())) {
+                                // For server connections, we need to use the GATT server's setPreferredPhy
+                                try {
+                                    gattServer?.setPreferredPhy(
+                                        device,
+                                        BluetoothDevice.PHY_LE_CODED,  // txPhy
+                                        BluetoothDevice.PHY_LE_CODED,  // rxPhy
+                                        BluetoothDevice.PHY_OPTION_S2  // S=2 for balance
+                                    )
+                                    Log.d(TAG, "Server: Requested LE Coded PHY for ${device.address}")
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Server: Failed to request Coded PHY: ${e.message}")
+                                }
+                            }
+                        }
                         
                         // Get best available RSSI (scan RSSI for server connections)
                         val rssi = connectionTracker.getBestRSSI(device.address) ?: Int.MIN_VALUE

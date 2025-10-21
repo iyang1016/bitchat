@@ -198,6 +198,49 @@ fun DebugSettingsSheet(
                 }
             }
 
+            // LE Coded PHY toggle
+            item {
+                Surface(shape = RoundedCornerShape(12.dp), color = colorScheme.surfaceVariant.copy(alpha = 0.2f)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val codedPhyManager = meshService.connectionManager.powerManager.getCodedPhyManager()
+                        val powerManager = meshService.connectionManager.powerManager
+                        val isCodedPhySupported = codedPhyManager.getStatusInfo().contains("Hardware Support: true")
+                        var isCodedPhyEnabled by remember { mutableStateOf(codedPhyManager.isCodedPhyAvailable()) }
+                        val currentPowerMode = powerManager.getCurrentMode()
+                        val shouldUseCodedPhy = codedPhyManager.shouldUseCodedPhy(currentPowerMode)
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Filled.SettingsEthernet, contentDescription = null, tint = Color(0xFF007AFF))
+                            Text("LE Coded PHY", fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.weight(1f))
+                            Switch(
+                                checked = isCodedPhyEnabled,
+                                onCheckedChange = { enabled ->
+                                    codedPhyManager.setCodedPhyEnabled(enabled)
+                                    isCodedPhyEnabled = enabled
+                                },
+                                enabled = isCodedPhySupported
+                            )
+                        }
+                        
+                        // Status and range information
+                        val statusText = when {
+                            !isCodedPhySupported -> "Not supported (Android 8.0+ & Bluetooth 5.0+ required)"
+                            !isCodedPhyEnabled -> "Disabled - Standard range (60m)"
+                            !shouldUseCodedPhy -> "Power saving mode ($currentPowerMode) - Standard range"
+                            else -> "Active - Extended range up to 1km line-of-sight"
+                        }
+                        
+                        Text(
+                            statusText,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+
             // Packet relay controls and stats
             item {
                 Surface(shape = RoundedCornerShape(12.dp), color = colorScheme.surfaceVariant.copy(alpha = 0.2f)) {

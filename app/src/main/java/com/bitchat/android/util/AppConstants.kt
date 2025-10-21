@@ -22,6 +22,11 @@ object AppConstants {
 
         // GATT client RSSI updates
         const val RSSI_UPDATE_INTERVAL_MS: Long = 5_000L
+        
+        // LE Coded PHY
+        const val CODED_PHY_ENABLED_DEFAULT: Boolean = true
+        const val CODED_PHY_PREFER_S8_DEFAULT: Boolean = false // S=2 for balance of range/speed
+        const val CODED_PHY_REQUEST_DELAY_MS: Long = 500L
     }
 
     object Sync {
