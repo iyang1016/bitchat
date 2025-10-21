@@ -140,15 +140,22 @@ class CodedPhyManager(private val context: Context) {
         }
         
         return try {
-            ScanSettings.Builder()
+            val builder = ScanSettings.Builder()
                 .setScanMode(baseScanSettings.scanMode)
                 .setCallbackType(baseScanSettings.callbackType)
-                .setMatchMode(baseScanSettings.matchMode)
-                .setNumOfMatches(baseScanSettings.numOfMatches)
                 .setReportDelay(baseScanSettings.reportDelayMillis)
-                // Enable LE Coded PHY for scanning
-                .setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
-                .build()
+            
+            // Try to set PHY via reflection for API compatibility
+            try {
+                val setPhyMethod = ScanSettings.Builder::class.java.getMethod("setPhy", Int::class.javaPrimitiveType)
+                setPhyMethod.invoke(builder, 3) // PHY_LE_ALL_SUPPORTED = 3
+            } catch (_: NoSuchMethodException) {
+                // Method not available on this SDK - ignore
+            } catch (e: Exception) {
+                Log.w(TAG, "setPhy reflection failed: ${e.message}")
+            }
+            
+            builder.build()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to create Coded PHY scan settings: ${e.message}")
             baseScanSettings
@@ -165,15 +172,25 @@ class CodedPhyManager(private val context: Context) {
         }
         
         return try {
-            AdvertiseSettings.Builder()
+            val builder = AdvertiseSettings.Builder()
                 .setAdvertiseMode(baseAdvertiseSettings.mode)
                 .setTxPowerLevel(baseAdvertiseSettings.txPowerLevel)
                 .setConnectable(baseAdvertiseSettings.isConnectable)
                 .setTimeout(baseAdvertiseSettings.timeout)
-                // Use LE Coded PHY for advertising (S=2 for balance of range/speed)
-                .setPrimaryPhy(BluetoothDevice.PHY_LE_CODED)
-                .setSecondaryPhy(BluetoothDevice.PHY_LE_CODED)
-                .build()
+            
+            // Try to set PHY via reflection for API compatibility
+            try {
+                val primaryPhyMethod = AdvertiseSettings.Builder::class.java.getMethod("setPrimaryPhy", Int::class.javaPrimitiveType)
+                val secondaryPhyMethod = AdvertiseSettings.Builder::class.java.getMethod("setSecondaryPhy", Int::class.javaPrimitiveType)
+                primaryPhyMethod.invoke(builder, 3) // PHY_LE_CODED = 3
+                secondaryPhyMethod.invoke(builder, 3) // PHY_LE_CODED = 3
+            } catch (_: NoSuchMethodException) {
+                // Methods not available on this SDK - will use GATT PHY requests instead
+            } catch (e: Exception) {
+                Log.w(TAG, "Advertise PHY reflection failed: ${e.message}")
+            }
+            
+            builder.build()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to create Coded PHY advertise settings: ${e.message}")
             baseAdvertiseSettings
