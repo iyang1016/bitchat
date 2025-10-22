@@ -332,14 +332,17 @@ private fun CoroutineScope.startStatusPolling(
 ) {
     launch {
         var attempts = 0
-        // Ultra-fast polling: 3s for first 2 minutes, 10s for next 3 minutes, then 30s
-        while (attempts < 200) { // ~30 minutes total
-            val delayTime = when {
-                attempts < 40 -> 3000L  // First 2 minutes: check every 3 seconds
-                attempts < 58 -> 10000L // Next 3 minutes: check every 10 seconds  
-                else -> 30000L          // After 5 minutes: check every 30 seconds
+        // Ultra-fast polling: check IMMEDIATELY, then every 2s for first minute, then 5s, then 15s
+        while (attempts < 200) {
+            // Check immediately on first attempt, then delay
+            if (attempts > 0) {
+                val delayTime = when {
+                    attempts < 30 -> 2000L  // First minute: check every 2 seconds
+                    attempts < 48 -> 5000L  // Next 90 seconds: check every 5 seconds
+                    else -> 15000L          // After 2.5 minutes: check every 15 seconds
+                }
+                delay(delayTime)
             }
-            delay(delayTime)
             attempts++
             
             try {
@@ -353,9 +356,9 @@ private fun CoroutineScope.startStatusPolling(
                             return@launch
                         } else {
                             val elapsed = when {
-                                attempts <= 40 -> attempts * 3
-                                attempts <= 58 -> 120 + (attempts - 40) * 10
-                                else -> 300 + (attempts - 58) * 30
+                                attempts <= 30 -> attempts * 2
+                                attempts <= 48 -> 60 + (attempts - 30) * 5
+                                else -> 150 + (attempts - 48) * 15
                             }
                             onStatusUpdate("⏳ Checking... (${elapsed}s)")
                         }
