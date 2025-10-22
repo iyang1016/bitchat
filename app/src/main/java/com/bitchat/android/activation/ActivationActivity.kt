@@ -332,22 +332,41 @@ private fun CoroutineScope.startStatusPolling(
 ) {
     launch {
         var attempts = 0
-        while (attempts < 120) {
-            delay(30000)
+        // Ultra-fast polling: 3s for first 2 minutes, 10s for next 3 minutes, then 30s
+        while (attempts < 200) { // ~30 minutes total
+            val delayTime = when {
+                attempts < 40 -> 3000L  // First 2 minutes: check every 3 seconds
+                attempts < 58 -> 10000L // Next 3 minutes: check every 10 seconds  
+                else -> 30000L          // After 5 minutes: check every 30 seconds
+            }
+            delay(delayTime)
             attempts++
-            val result = activationManager.checkApprovalStatus()
-            result.onSuccess { status ->
-                if (status.approved) {
-                    onStatusUpdate("Approved! Launching...")
-                    delay(1000)
-                    onActivated()
-                    return@launch
-                } else {
-                    onStatusUpdate("Checking... (${attempts * 30}s)")
+            
+            try {
+                kotlinx.coroutines.withTimeout(3000) { // 3 second timeout per check
+                    val result = activationManager.checkApprovalStatus()
+                    result.onSuccess { status ->
+                        if (status.approved) {
+                            onStatusUpdate("✅ Approved! Launching...")
+                            delay(300)
+                            onActivated()
+                            return@launch
+                        } else {
+                            val elapsed = when {
+                                attempts <= 40 -> attempts * 3
+                                attempts <= 58 -> 120 + (attempts - 40) * 10
+                                else -> 300 + (attempts - 58) * 30
+                            }
+                            onStatusUpdate("⏳ Checking... (${elapsed}s)")
+                        }
+                    }
                 }
+            } catch (e: Exception) {
+                // Timeout or error - continue polling silently
+                onStatusUpdate("⚠️ Retrying...")
             }
         }
-        onStatusUpdate("Timeout. Restart app.")
+        onStatusUpdate("⏱️ Timeout. Please restart app.")
     }
 }
 

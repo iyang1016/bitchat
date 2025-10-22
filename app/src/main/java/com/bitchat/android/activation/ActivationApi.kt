@@ -16,7 +16,7 @@ class ActivationApi {
             append(".batongbakal1016")
             append(".workers.dev")
         }
-        private const val TIMEOUT = 10000
+        private const val TIMEOUT = 3000 // Reduced to 3 seconds for faster response
         
         // API integrity check
         private const val API_KEY_HASH = "a7f8d9e2b4c1"
@@ -30,9 +30,11 @@ class ActivationApi {
             connection.apply {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Connection", "keep-alive") // Reuse connections
                 doOutput = true
                 connectTimeout = TIMEOUT
                 readTimeout = TIMEOUT
+                useCaches = false
             }
             
             val jsonBody = JSONObject().apply {
@@ -70,8 +72,11 @@ class ActivationApi {
             
             connection.apply {
                 requestMethod = "GET"
+                setRequestProperty("Connection", "keep-alive") // Reuse connections
+                setRequestProperty("Cache-Control", "no-cache") // Always get fresh data
                 connectTimeout = TIMEOUT
                 readTimeout = TIMEOUT
+                useCaches = false
             }
             
             val responseCode = connection.responseCode

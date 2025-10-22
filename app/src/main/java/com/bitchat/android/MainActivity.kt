@@ -42,6 +42,7 @@ import com.bitchat.android.ui.theme.BitchatTheme
 import com.bitchat.android.nostr.PoWPreferenceManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 class MainActivity : OrientationAwareActivity() {
 
@@ -144,17 +145,24 @@ class MainActivity : OrientationAwareActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
-                    delay(60000) // Check every 60 seconds
+                    delay(30000) // Check every 30 seconds for faster response
                     
-                    // Check if still activated
-                    val result = activationManager.checkApprovalStatus()
-                    result.onSuccess { status ->
-                        if (!status.approved || status.rejected) {
-                            // User has been revoked - kick them out
-                            activationManager.reset()
-                            startActivity(Intent(this@MainActivity, com.bitchat.android.activation.ActivationActivity::class.java))
-                            finish()
+                    // Check if still activated (with timeout)
+                    try {
+                        withTimeout(5000) { // 5 second timeout
+                            val result = activationManager.checkApprovalStatus()
+                            result.onSuccess { status ->
+                                if (!status.approved || status.rejected) {
+                                    // User has been revoked - kick them out immediately
+                                    activationManager.reset()
+                                    startActivity(Intent(this@MainActivity, com.bitchat.android.activation.ActivationActivity::class.java))
+                                    finish()
+                                }
+                            }
                         }
+                    } catch (e: Exception) {
+                        // Timeout or network error - continue checking
+                        Log.w("MainActivity", "Activation check failed: ${e.message}")
                     }
                 }
             }
