@@ -332,8 +332,10 @@ private fun CoroutineScope.startStatusPolling(
 ) {
     launch {
         var attempts = 0
+        var shouldStop = false
+        
         // Ultra-fast polling: check IMMEDIATELY, then every 2s for first minute, then 5s, then 15s
-        while (attempts < 200) {
+        while (attempts < 200 && !shouldStop) {
             // Check immediately on first attempt, then delay
             if (attempts > 0) {
                 val delayTime = when {
@@ -350,10 +352,8 @@ private fun CoroutineScope.startStatusPolling(
                     val result = activationManager.checkApprovalStatus()
                     result.onSuccess { status ->
                         if (status.approved) {
+                            shouldStop = true
                             onStatusUpdate("✅ Approved! Launching...")
-                            delay(300)
-                            onActivated()
-                            return@launch
                         } else {
                             val elapsed = when {
                                 attempts <= 30 -> attempts * 2
@@ -363,6 +363,13 @@ private fun CoroutineScope.startStatusPolling(
                             onStatusUpdate("⏳ Checking... (${elapsed}s)")
                         }
                     }
+                }
+                
+                // If approval was detected, exit the loop and activate
+                if (shouldStop) {
+                    delay(300)
+                    onActivated()
+                    return@launch
                 }
             } catch (e: Exception) {
                 // Timeout or error - continue polling silently
