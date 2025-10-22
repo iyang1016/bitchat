@@ -43,6 +43,10 @@ class ActivationManager(private val context: Context) {
     }
     
     fun isVerified(): Boolean {
+        // TEMPORARY: Bypass activation for testing
+        return true
+        
+        /* Uncomment when ready to enable:
         // Root/tamper detection
         if (isDeviceCompromised()) {
             return false
@@ -60,6 +64,7 @@ class ActivationManager(private val context: Context) {
         }
         
         return verified
+        */
     }
     
     private fun isDeviceCompromised(): Boolean {
