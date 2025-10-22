@@ -47,6 +47,8 @@ class CodedPhyManager(private val context: Context) {
     private var isCodedPhySupported: Boolean = false
     private var isCodedPhyEnabled: Boolean = false
     private var powerAwareMode: Boolean = true // Enable power-aware Coded PHY usage
+    private var preferS8Coding: Boolean = false // Prefer S=8 (8x range) over S=2 (2x range)
+    private var forceMaxRange: Boolean = false // Force maximum range regardless of power state
     
     init {
         detectCodedPhySupport()
@@ -92,6 +94,9 @@ class CodedPhyManager(private val context: Context) {
     fun shouldUseCodedPhy(powerMode: PowerManager.PowerMode): Boolean {
         if (!isCodedPhyAvailable()) return false
         
+        // Force max range overrides everything
+        if (forceMaxRange) return true
+        
         return if (powerAwareMode) {
             when (powerMode) {
                 PowerManager.PowerMode.PERFORMANCE -> true
@@ -101,6 +106,27 @@ class CodedPhyManager(private val context: Context) {
             }
         } else {
             true // Always use if manually enabled
+        }
+    }
+    
+    /**
+     * Get the preferred coding scheme
+     */
+    fun getPreferredCoding(): String = if (preferS8Coding) "S=8" else "S=2"
+    
+    /**
+     * Get the estimated range multiplier
+     */
+    fun getRangeMultiplier(): Int = if (preferS8Coding) 8 else 2
+    
+    /**
+     * Get the estimated range in meters
+     */
+    fun getEstimatedRange(): String {
+        return if (shouldUseCodedPhy(PowerManager.PowerMode.PERFORMANCE)) {
+            if (preferS8Coding) "up to 1km" else "up to 500m"
+        } else {
+            "60m"
         }
     }
     
@@ -129,6 +155,32 @@ class CodedPhyManager(private val context: Context) {
      * Get power-aware mode status
      */
     fun isPowerAwareMode(): Boolean = powerAwareMode
+    
+    /**
+     * Set preferred coding scheme (S=2 or S=8)
+     */
+    fun setPreferS8Coding(prefer: Boolean) {
+        preferS8Coding = prefer
+        Log.i(TAG, "LE Coded PHY coding scheme: ${if (prefer) "S=8 (8x range, 125kbps)" else "S=2 (2x range, 500kbps)"}")
+    }
+    
+    /**
+     * Get S=8 coding preference
+     */
+    fun isPreferS8Coding(): Boolean = preferS8Coding
+    
+    /**
+     * Force maximum range mode (overrides power-aware)
+     */
+    fun setForceMaxRange(force: Boolean) {
+        forceMaxRange = force
+        Log.i(TAG, "LE Coded PHY force max range: ${if (force) "enabled" else "disabled"}")
+    }
+    
+    /**
+     * Get force max range status
+     */
+    fun isForceMaxRange(): Boolean = forceMaxRange
     
     /**
      * Get scan settings with LE Coded PHY support
@@ -202,13 +254,15 @@ class CodedPhyManager(private val context: Context) {
      * This optimizes the connection for extended range
      */
     @RequiresApi(Build.VERSION_CODES.O)
-    fun requestCodedPhy(gatt: BluetoothGatt, preferS8: Boolean = false) {
+    fun requestCodedPhy(gatt: BluetoothGatt, preferS8: Boolean = preferS8Coding) {
         if (!isCodedPhyAvailable()) {
             return
         }
         
         try {
-            val phyOption = if (preferS8) PHY_OPTION_S8 else PHY_OPTION_S2
+            // Use configured preference or override
+            val useS8 = if (forceMaxRange) true else preferS8
+            val phyOption = if (useS8) PHY_OPTION_S8 else PHY_OPTION_S2
             
             // Request LE Coded PHY for both TX and RX
             gatt.setPreferredPhy(
@@ -217,7 +271,7 @@ class CodedPhyManager(private val context: Context) {
                 phyOption      // phyOptions (S2 or S8)
             )
             
-            Log.d(TAG, "Requested LE Coded PHY (${if (preferS8) "S=8" else "S=2"}) for ${gatt.device.address}")
+            Log.d(TAG, "Requested LE Coded PHY (${if (useS8) "S=8 (1km)" else "S=2 (500m)"}) for ${gatt.device.address}")
         } catch (e: Exception) {
             Log.w(TAG, "Failed to request Coded PHY: ${e.message}")
         }
@@ -296,9 +350,11 @@ class CodedPhyManager(private val context: Context) {
             
             if (isCodedPhyAvailable()) {
                 appendLine("- Range Extension: Up to 8x (1km line-of-sight in optimal conditions)")
-                appendLine("- Coding Schemes: S=2 (2x range, 500kbps), S=8 (8x range, 125kbps)")
+                appendLine("- Current Coding: ${if (preferS8Coding) "S=8 (8x range, 125kbps)" else "S=2 (2x range, 500kbps)"}")
+                appendLine("- Estimated Range: ${getEstimatedRange()}")
                 appendLine("- Benefits: Better penetration, FEC error correction")
                 appendLine("- Power Aware Mode: $powerAwareMode")
+                appendLine("- Force Max Range: $forceMaxRange")
             }
         }
     }

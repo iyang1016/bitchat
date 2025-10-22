@@ -207,15 +207,20 @@ fun DebugSettingsSheet(
                         val isCodedPhySupported = codedPhyManager.getStatusInfo().contains("Hardware Support: true")
                         var isCodedPhyEnabled by remember { mutableStateOf(codedPhyManager.isCodedPhyAvailable()) }
                         var isPowerAware by remember { mutableStateOf(codedPhyManager.isPowerAwareMode()) }
+                        var preferS8 by remember { mutableStateOf(codedPhyManager.isPreferS8Coding()) }
+                        var forceMaxRange by remember { mutableStateOf(codedPhyManager.isForceMaxRange()) }
                         var currentPowerMode by remember { mutableStateOf(powerManager.getCurrentMode()) }
                         var shouldUseCodedPhy by remember { mutableStateOf(codedPhyManager.shouldUseCodedPhy(currentPowerMode)) }
                         var activeConnectionsCount by remember { mutableStateOf(0) }
+                        var showAdvanced by remember { mutableStateOf(false) }
                         
                         // Update states periodically
                         LaunchedEffect(isPresented) {
                             while (isPresented) {
                                 isCodedPhyEnabled = codedPhyManager.isCodedPhyAvailable()
                                 isPowerAware = codedPhyManager.isPowerAwareMode()
+                                preferS8 = codedPhyManager.isPreferS8Coding()
+                                forceMaxRange = codedPhyManager.isForceMaxRange()
                                 currentPowerMode = powerManager.getCurrentMode()
                                 shouldUseCodedPhy = codedPhyManager.shouldUseCodedPhy(currentPowerMode)
                                 activeConnectionsCount = connectedDevices.size
@@ -248,81 +253,266 @@ fun DebugSettingsSheet(
                             )
                         }
                         
-                        // Power Aware Mode toggle
+                        // Quick preset buttons
                         if (isCodedPhySupported && isCodedPhyEnabled) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                // Balanced preset
+                                Button(
+                                    onClick = {
+                                        codedPhyManager.setPreferS8Coding(false)
+                                        codedPhyManager.setForceMaxRange(false)
+                                        codedPhyManager.setPowerAwareMode(true)
+                                        preferS8 = false
+                                        forceMaxRange = false
+                                        isPowerAware = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (!preferS8 && !forceMaxRange && isPowerAware) 
+                                            Color(0xFF007AFF) else colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Balanced", fontSize = 10.sp)
+                                        Text("500m", fontSize = 8.sp)
+                                    }
+                                }
+                                
+                                // Max Range preset
+                                Button(
+                                    onClick = {
+                                        codedPhyManager.setPreferS8Coding(true)
+                                        codedPhyManager.setForceMaxRange(false)
+                                        codedPhyManager.setPowerAwareMode(true)
+                                        preferS8 = true
+                                        forceMaxRange = false
+                                        isPowerAware = true
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (preferS8 && !forceMaxRange && isPowerAware) 
+                                            Color(0xFF00C851) else colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Max Range", fontSize = 10.sp)
+                                        Text("1km", fontSize = 8.sp)
+                                    }
+                                }
+                                
+                                // Ultra preset
+                                Button(
+                                    onClick = {
+                                        codedPhyManager.setPreferS8Coding(true)
+                                        codedPhyManager.setForceMaxRange(true)
+                                        codedPhyManager.setPowerAwareMode(false)
+                                        preferS8 = true
+                                        forceMaxRange = true
+                                        isPowerAware = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (forceMaxRange) 
+                                            Color(0xFFFF3B30) else colorScheme.surfaceVariant
+                                    )
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Ultra", fontSize = 10.sp)
+                                        Text("1km+", fontSize = 8.sp)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Advanced controls
+                        if (isCodedPhySupported && isCodedPhyEnabled) {
+                            // Coding Scheme Selector (S=2 vs S=8)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Power Aware Mode", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                                Spacer(Modifier.weight(1f))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Coding Scheme", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        if (preferS8) "S=8: 8x range (125kbps)" else "S=2: 2x range (500kbps)",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 9.sp,
+                                        color = colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Switch(
+                                    checked = preferS8,
+                                    onCheckedChange = { enabled ->
+                                        codedPhyManager.setPreferS8Coding(enabled)
+                                        preferS8 = enabled
+                                    }
+                                )
+                            }
+                            
+                            // Force Max Range toggle
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Force Max Range", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        "Override power saving",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 9.sp,
+                                        color = if (forceMaxRange) Color(0xFFFF9500) else colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Switch(
+                                    checked = forceMaxRange,
+                                    onCheckedChange = { enabled ->
+                                        codedPhyManager.setForceMaxRange(enabled)
+                                        forceMaxRange = enabled
+                                    }
+                                )
+                            }
+                            
+                            // Power Aware Mode toggle
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Power Aware Mode", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                    Text(
+                                        "Auto-disable in power save",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 9.sp,
+                                        color = colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
                                 Switch(
                                     checked = isPowerAware,
                                     onCheckedChange = { enabled ->
                                         codedPhyManager.setPowerAwareMode(enabled)
                                         isPowerAware = enabled
-                                    }
+                                    },
+                                    enabled = !forceMaxRange
                                 )
                             }
                         }
                         
-                        // Real-time status with range estimation
-                        val (statusText, statusColor, estimatedRange) = when {
-                            !isCodedPhySupported -> Triple(
-                                "❌ Not supported (Android 8.0+ & BT 5.0+ required)",
-                                Color(0xFFFF9500),
-                                "60m"
-                            )
-                            !isCodedPhyEnabled -> Triple(
-                                "⚪ Disabled",
-                                colorScheme.onSurface.copy(alpha = 0.7f),
-                                "60m"
-                            )
-                            !shouldUseCodedPhy -> Triple(
-                                "🔋 Power Saving ($currentPowerMode)",
-                                Color(0xFFFF9500),
-                                "60m"
-                            )
-                            else -> Triple(
-                                "✅ Active - Extended Range",
-                                Color(0xFF00C851),
-                                "up to 1km"
-                            )
+                        // Optimized status calculation with memoization
+                        data class CodedPhyStatus(
+                            val text: String,
+                            val color: Color,
+                            val range: String,
+                            val multiplier: Float,
+                            val icon: String
+                        )
+                        
+                        data class CodedPhyStatusIcon(
+                            val text: String,
+                            val color: Color,
+                            val range: String,
+                            val multiplier: Float,
+                            val icon: androidx.compose.ui.graphics.vector.ImageVector
+                        )
+                        
+                        val status = remember(isCodedPhySupported, isCodedPhyEnabled, forceMaxRange, shouldUseCodedPhy, preferS8, currentPowerMode) {
+                            when {
+                                !isCodedPhySupported -> CodedPhyStatusIcon(
+                                    "Not supported (Android 8.0+ & BT 5.0+ required)",
+                                    Color(0xFFFF9500),
+                                    "60m",
+                                    1f,
+                                    Icons.Filled.Cancel
+                                )
+                                !isCodedPhyEnabled -> CodedPhyStatusIcon(
+                                    "Disabled - Standard Range",
+                                    Color(0xFF87878700),
+                                    "60m",
+                                    1f,
+                                    Icons.Filled.PowerSettingsNew
+                                )
+                                forceMaxRange -> CodedPhyStatusIcon(
+                                    "FORCE MAX RANGE - ${if (preferS8) "S=8 (1km)" else "S=2 (500m)"}",
+                                    Color(0xFFFF3B30),
+                                    if (preferS8) "1km" else "500m",
+                                    if (preferS8) 16.67f else 8.33f,
+                                    Icons.Filled.Bolt
+                                )
+                                !shouldUseCodedPhy -> CodedPhyStatusIcon(
+                                    "Power Saving Mode - $currentPowerMode",
+                                    Color(0xFFFF9500),
+                                    "60m",
+                                    1f,
+                                    Icons.Filled.BatteryAlert
+                                )
+                                else -> CodedPhyStatusIcon(
+                                    "Active - ${if (preferS8) "S=8 (1km)" else "S=2 (500m)"}",
+                                    Color(0xFF00C851),
+                                    if (preferS8) "1km" else "500m",
+                                    if (preferS8) 16.67f else 8.33f,
+                                    Icons.Filled.CheckCircle
+                                )
+                            }
                         }
                         
-                        Text(
-                            statusText,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            color = statusColor
-                        )
+                        // Status display with icon
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(
+                                imageVector = status.icon,
+                                contentDescription = null,
+                                tint = status.color,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                status.text,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = status.color
+                            )
+                        }
                         
                         // Range indicator with visual bar
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("Range:", fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = colorScheme.onSurface.copy(alpha = 0.6f))
                             
-                            // Visual range bar
+                            // Optimized visual range bar with smooth animation
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(4.dp)
-                                    .background(colorScheme.onSurface.copy(alpha = 0.1f), shape = RoundedCornerShape(2.dp))
+                                    .height(8.dp)
+                                    .background(colorScheme.onSurface.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp))
                             ) {
+                                val animatedProgress = androidx.compose.animation.core.animateFloatAsState(
+                                    targetValue = (status.multiplier / 16.67f).coerceIn(0.06f, 1f),
+                                    animationSpec = androidx.compose.animation.core.tween(300)
+                                )
+                                
                                 Box(
                                     modifier = Modifier
                                         .fillMaxHeight()
-                                        .fillMaxWidth(if (shouldUseCodedPhy) 1f else 0.06f)
+                                        .fillMaxWidth(animatedProgress.value)
                                         .background(
-                                            if (shouldUseCodedPhy) Color(0xFF00C851) else Color(0xFF87878700),
-                                            shape = RoundedCornerShape(2.dp)
+                                            status.color,
+                                            shape = RoundedCornerShape(4.dp)
                                         )
                                 )
                             }
                             
                             Text(
-                                estimatedRange,
+                                status.range,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (shouldUseCodedPhy) Color(0xFF00C851) else colorScheme.onSurface.copy(alpha = 0.6f)
+                                color = status.color
                             )
+                        }
+                        
+                        // Performance indicators
+                        if (shouldUseCodedPhy || forceMaxRange) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Speed,
+                                    contentDescription = null,
+                                    tint = colorScheme.onSurface.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Text(
+                                    "Range: ${if (preferS8) "8x" else "2x"} | Speed: ${if (preferS8) "125kbps" else "500kbps"} | TX: HIGH",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 9.sp,
+                                    color = colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
                         }
                         
                         // Active connections info
@@ -335,14 +525,23 @@ fun DebugSettingsSheet(
                             )
                         }
                         
-                        // Additional info
-                        if (shouldUseCodedPhy) {
-                            Text(
-                                "🚀 S=2 coding: 2x range (500kbps) | S=8 coding: 8x range (125kbps)",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 9.sp,
-                                color = colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
+                        // Power warning
+                        if (forceMaxRange) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFF3B30),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    "WARNING: Force Max Range will drain battery faster",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 9.sp,
+                                    color = Color(0xFFFF3B30),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }

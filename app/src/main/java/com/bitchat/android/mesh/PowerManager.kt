@@ -120,8 +120,10 @@ class PowerManager(private val context: Context) {
     
     /**
      * Get scan settings optimized for current power mode with LE Coded PHY support
+     * When Coded PHY is active, use aggressive scanning for better discovery
      */
     fun getScanSettings(): ScanSettings {
+        val useCodedPhy = codedPhyManager.shouldUseCodedPhy(currentMode)
         val builder = ScanSettings.Builder()
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
 
@@ -132,7 +134,8 @@ class PowerManager(private val context: Context) {
                 .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
 
             PowerMode.BALANCED -> builder
-                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+                // Use low latency scanning when Coded PHY is active for better long-range discovery
+                .setScanMode(if (useCodedPhy) ScanSettings.SCAN_MODE_LOW_LATENCY else ScanSettings.SCAN_MODE_BALANCED)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
                 .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
 
@@ -160,19 +163,23 @@ class PowerManager(private val context: Context) {
     
     /**
      * Get advertising settings optimized for current power mode with LE Coded PHY support
+     * When Coded PHY is active, boost TX power for maximum range performance
      */
     fun getAdvertiseSettings(): AdvertiseSettings {
+        val useCodedPhy = codedPhyManager.shouldUseCodedPhy(currentMode)
+        
         val baseSettings = when (currentMode) {
             PowerMode.PERFORMANCE -> AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH) // Always max for performance
                 .setConnectable(true)
                 .setTimeout(0)
                 .build()
                 
             PowerMode.BALANCED -> AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
+                // Boost TX power when Coded PHY is active for better range
+                .setTxPowerLevel(if (useCodedPhy) AdvertiseSettings.ADVERTISE_TX_POWER_HIGH else AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
                 .setConnectable(true)
                 .setTimeout(0)
                 .build()
