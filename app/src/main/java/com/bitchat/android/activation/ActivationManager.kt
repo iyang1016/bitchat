@@ -43,28 +43,28 @@ class ActivationManager(private val context: Context) {
     }
     
     fun isVerified(): Boolean {
-        // TEMPORARY: Bypass activation for testing
-        return true
-        
-        /* Uncomment when ready to enable:
-        // Root/tamper detection
-        if (isDeviceCompromised()) {
+        try {
+            // Root/tamper detection
+            if (isDeviceCompromised()) {
+                return false
+            }
+            
+            // Anti-tampering: verify integrity
+            val verified = prefs.getBoolean(KEY_VERIFIED, false)
+            val timestamp = prefs.getLong(KEY_VERIFICATION_TIME, 0)
+            
+            // Check if activation is legitimate (has timestamp)
+            if (verified && timestamp == 0L) {
+                // Tampered - reset
+                prefs.edit().clear().apply()
+                return false
+            }
+            
+            return verified
+        } catch (e: Exception) {
+            // If verification check fails, deny access
             return false
         }
-        
-        // Anti-tampering: verify integrity
-        val verified = prefs.getBoolean(KEY_VERIFIED, false)
-        val timestamp = prefs.getLong(KEY_VERIFICATION_TIME, 0)
-        
-        // Check if activation is legitimate (has timestamp)
-        if (verified && timestamp == 0L) {
-            // Tampered - reset
-            prefs.edit().clear().apply()
-            return false
-        }
-        
-        return verified
-        */
     }
     
     private fun isDeviceCompromised(): Boolean {

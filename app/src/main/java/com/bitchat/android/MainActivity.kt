@@ -66,6 +66,15 @@ class MainActivity : OrientationAwareActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // SECURITY: Check activation status
+        val activationManager = com.bitchat.android.activation.ActivationManager(this)
+        if (!activationManager.isVerified()) {
+            // Not activated - redirect to activation screen
+            startActivity(Intent(this, com.bitchat.android.activation.ActivationActivity::class.java))
+            finish()
+            return
+        }
+        
         // Enable edge-to-edge display for modern Android look
         enableEdgeToEdge()
 
@@ -638,6 +647,15 @@ class MainActivity : OrientationAwareActivity() {
     
     override fun onResume() {
         super.onResume()
+        
+        // SECURITY: Re-check activation on resume (prevent bypass)
+        val activationManager = com.bitchat.android.activation.ActivationManager(this)
+        if (!activationManager.isVerified()) {
+            startActivity(Intent(this, com.bitchat.android.activation.ActivationActivity::class.java))
+            finish()
+            return
+        }
+        
         // Check Bluetooth and Location status on resume and handle accordingly
         if (mainViewModel.onboardingState.value == OnboardingState.COMPLETE) {
             // Set app foreground state
