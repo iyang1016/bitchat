@@ -135,6 +135,30 @@ class MainActivity : OrientationAwareActivity() {
         if (mainViewModel.onboardingState.value == OnboardingState.CHECKING) {
             checkOnboardingStatus()
         }
+        
+        // Periodic activation check - verify user hasn't been revoked
+        startActivationMonitoring(activationManager)
+    }
+    
+    private fun startActivationMonitoring(activationManager: com.bitchat.android.activation.ActivationManager) {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(60000) // Check every 60 seconds
+                    
+                    // Check if still activated
+                    val result = activationManager.checkApprovalStatus()
+                    result.onSuccess { status ->
+                        if (!status.approved || status.rejected) {
+                            // User has been revoked - kick them out
+                            activationManager.reset()
+                            startActivity(Intent(this@MainActivity, com.bitchat.android.activation.ActivationActivity::class.java))
+                            finish()
+                        }
+                    }
+                }
+            }
+        }
     }
     
     @Composable
