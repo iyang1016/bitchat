@@ -198,7 +198,7 @@ fun DebugSettingsSheet(
                 }
             }
 
-            // LE Coded PHY toggle
+            // LE Coded PHY toggle with power control and real-time indicator
             item {
                 Surface(shape = RoundedCornerShape(12.dp), color = colorScheme.surfaceVariant.copy(alpha = 0.2f)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -206,12 +206,37 @@ fun DebugSettingsSheet(
                         val powerManager = meshService.connectionManager.powerManager
                         val isCodedPhySupported = codedPhyManager.getStatusInfo().contains("Hardware Support: true")
                         var isCodedPhyEnabled by remember { mutableStateOf(codedPhyManager.isCodedPhyAvailable()) }
-                        val currentPowerMode = powerManager.getCurrentMode()
-                        val shouldUseCodedPhy = codedPhyManager.shouldUseCodedPhy(currentPowerMode)
+                        var isPowerAware by remember { mutableStateOf(codedPhyManager.isPowerAwareMode()) }
+                        var currentPowerMode by remember { mutableStateOf(powerManager.getCurrentMode()) }
+                        var shouldUseCodedPhy by remember { mutableStateOf(codedPhyManager.shouldUseCodedPhy(currentPowerMode)) }
+                        var activeConnectionsCount by remember { mutableStateOf(0) }
                         
+                        // Update states periodically
+                        LaunchedEffect(isPresented) {
+                            while (isPresented) {
+                                isCodedPhyEnabled = codedPhyManager.isCodedPhyAvailable()
+                                isPowerAware = codedPhyManager.isPowerAwareMode()
+                                currentPowerMode = powerManager.getCurrentMode()
+                                shouldUseCodedPhy = codedPhyManager.shouldUseCodedPhy(currentPowerMode)
+                                activeConnectionsCount = connectedDevices.size
+                                kotlinx.coroutines.delay(1000)
+                            }
+                        }
+                        
+                        // Header with real-time indicator
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Filled.SettingsEthernet, contentDescription = null, tint = Color(0xFF007AFF))
                             Text("LE Coded PHY", fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            
+                            // Real-time status indicator
+                            if (shouldUseCodedPhy) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF00C851), shape = androidx.compose.foundation.shape.CircleShape)
+                                )
+                            }
+                            
                             Spacer(Modifier.weight(1f))
                             Switch(
                                 checked = isCodedPhyEnabled,
@@ -223,20 +248,102 @@ fun DebugSettingsSheet(
                             )
                         }
                         
-                        // Status and range information
-                        val statusText = when {
-                            !isCodedPhySupported -> "Not supported (Android 8.0+ & Bluetooth 5.0+ required)"
-                            !isCodedPhyEnabled -> "Disabled - Standard range (60m)"
-                            !shouldUseCodedPhy -> "Power saving mode ($currentPowerMode) - Standard range"
-                            else -> "Active - Extended range up to 1km line-of-sight"
+                        // Power Aware Mode toggle
+                        if (isCodedPhySupported && isCodedPhyEnabled) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Power Aware Mode", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                Spacer(Modifier.weight(1f))
+                                Switch(
+                                    checked = isPowerAware,
+                                    onCheckedChange = { enabled ->
+                                        codedPhyManager.setPowerAwareMode(enabled)
+                                        isPowerAware = enabled
+                                    }
+                                )
+                            }
+                        }
+                        
+                        // Real-time status with range estimation
+                        val (statusText, statusColor, estimatedRange) = when {
+                            !isCodedPhySupported -> Triple(
+                                "❌ Not supported (Android 8.0+ & BT 5.0+ required)",
+                                Color(0xFFFF9500),
+                                "60m"
+                            )
+                            !isCodedPhyEnabled -> Triple(
+                                "⚪ Disabled",
+                                colorScheme.onSurface.copy(alpha = 0.7f),
+                                "60m"
+                            )
+                            !shouldUseCodedPhy -> Triple(
+                                "🔋 Power Saving ($currentPowerMode)",
+                                Color(0xFFFF9500),
+                                "60m"
+                            )
+                            else -> Triple(
+                                "✅ Active - Extended Range",
+                                Color(0xFF00C851),
+                                "up to 1km"
+                            )
                         }
                         
                         Text(
                             statusText,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = colorScheme.onSurface.copy(alpha = 0.7f)
+                            color = statusColor
                         )
+                        
+                        // Range indicator with visual bar
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Range:", fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = colorScheme.onSurface.copy(alpha = 0.6f))
+                            
+                            // Visual range bar
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(4.dp)
+                                    .background(colorScheme.onSurface.copy(alpha = 0.1f), shape = RoundedCornerShape(2.dp))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .fillMaxWidth(if (shouldUseCodedPhy) 1f else 0.06f)
+                                        .background(
+                                            if (shouldUseCodedPhy) Color(0xFF00C851) else Color(0xFF87878700),
+                                            shape = RoundedCornerShape(2.dp)
+                                        )
+                                )
+                            }
+                            
+                            Text(
+                                estimatedRange,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (shouldUseCodedPhy) Color(0xFF00C851) else colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        
+                        // Active connections info
+                        if (isCodedPhyEnabled && activeConnectionsCount > 0) {
+                            Text(
+                                "Active connections: $activeConnectionsCount ${if (shouldUseCodedPhy) "using extended range" else "standard range"}",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                color = colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        
+                        // Additional info
+                        if (shouldUseCodedPhy) {
+                            Text(
+                                "🚀 S=2 coding: 2x range (500kbps) | S=8 coding: 8x range (125kbps)",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp,
+                                color = colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 }
             }
