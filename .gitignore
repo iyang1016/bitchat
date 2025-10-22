@@ -58,6 +58,5 @@ google-services.json
 *.jks
 *.keystore
 
-# Verification system (security - keep private)
-verification/
-app/src/main/java/com/bitchat/android/verification/
+# Activation backend (keep private - contains server setup)
+activation-backend/
