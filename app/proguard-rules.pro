@@ -23,3 +23,10 @@
 -keepnames class org.torproject.jni.**
 -dontwarn info.guardianproject.arti.**
 -dontwarn org.torproject.jni.**
+
+# Activation system - HEAVILY obfuscate to prevent bypass
+-keep class com.bitchat.android.activation.ActivationManager {
+    public boolean isVerified();
+}
+# Obfuscate everything else in activation package
+-keep,allowobfuscation class com.bitchat.android.activation.**

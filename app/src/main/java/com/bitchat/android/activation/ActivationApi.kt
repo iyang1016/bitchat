@@ -9,9 +9,16 @@ import java.net.URL
 class ActivationApi {
     
     companion object {
-        // TODO: Replace with your Cloudflare Worker URL
-        private const val BASE_URL = "https://your-worker.workers.dev"
-        private const val TIMEOUT = 10000 // 10 seconds
+        // Obfuscated API endpoint - split to avoid easy string search
+        private val BASE_URL = buildString {
+            append("https://")
+            append("your-worker")
+            append(".workers.dev")
+        }
+        private const val TIMEOUT = 10000
+        
+        // API integrity check
+        private const val API_KEY_HASH = "a7f8d9e2b4c1"
     }
     
     suspend fun requestAccess(deviceInfo: DeviceInfo): RequestResponse = withContext(Dispatchers.IO) {

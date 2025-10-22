@@ -15,9 +15,10 @@ class ActivationManager(private val context: Context) {
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
         .build()
     
+    // Obfuscated preference file name
     private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
         context,
-        "bitchat_activation",
+        "app_sys_config",
         masterKey,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
@@ -26,14 +27,63 @@ class ActivationManager(private val context: Context) {
     private val api = ActivationApi()
     
     companion object {
-        private const val KEY_VERIFIED = "is_verified"
-        private const val KEY_DEVICE_ID = "device_id"
-        private const val KEY_VERIFICATION_TIME = "verification_time"
-        private const val KEY_REQUEST_SENT = "request_sent"
+        // Obfuscated storage keys
+        private const val KEY_VERIFIED = "sys_state_v2"
+        private const val KEY_DEVICE_ID = "hw_id_hash"
+        private const val KEY_VERIFICATION_TIME = "ts_init"
+        private const val KEY_REQUEST_SENT = "net_req_flag"
+        
+        // Anti-tampering checksum
+        private const val INTEGRITY_CHECK = "d4f8a9b2c1e3"
     }
     
     fun isVerified(): Boolean {
-        return prefs.getBoolean(KEY_VERIFIED, false)
+        // Root/tamper detection
+        if (isDeviceCompromised()) {
+            return false
+        }
+        
+        // Anti-tampering: verify integrity
+        val verified = prefs.getBoolean(KEY_VERIFIED, false)
+        val timestamp = prefs.getLong(KEY_VERIFICATION_TIME, 0)
+        
+        // Check if activation is legitimate (has timestamp)
+        if (verified && timestamp == 0L) {
+            // Tampered - reset
+            prefs.edit().clear().apply()
+            return false
+        }
+        
+        return verified
+    }
+    
+    private fun isDeviceCompromised(): Boolean {
+        // Check for root/debugging
+        val buildTags = android.os.Build.TAGS
+        if (buildTags != null && buildTags.contains("test-keys")) {
+            return true
+        }
+        
+        // Check for common root files
+        val paths = arrayOf(
+            "/system/app/Superuser.apk",
+            "/sbin/su",
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/data/local/xbin/su",
+            "/data/local/bin/su",
+            "/system/sd/xbin/su",
+            "/system/bin/failsafe/su",
+            "/data/local/su"
+        )
+        
+        for (path in paths) {
+            if (java.io.File(path).exists()) {
+                return true
+            }
+        }
+        
+        return false
     }
     
     fun getDeviceId(): String {
