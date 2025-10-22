@@ -8,8 +8,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
@@ -73,6 +75,7 @@ fun ActivationScreen(
     var activationCode by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var statusMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
     val deviceInfo = remember { activationManager.getDeviceInfo() }
@@ -101,10 +104,13 @@ fun ActivationScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(32.dp)
+                .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
+            Spacer(modifier = Modifier.height(48.dp))
             Icon(
                 imageVector = when (screenState) {
                     ActivationScreenState.INITIAL -> Icons.Filled.Lock
@@ -159,6 +165,24 @@ fun ActivationScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
+            if (errorMessage != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = errorMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            
             if (statusMessage.isNotEmpty()) {
                 Text(statusMessage, style = MaterialTheme.typography.bodyMedium, 
                     color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
@@ -170,7 +194,8 @@ fun ActivationScreen(
                     Button(
                         onClick = {
                             scope.launch {
-                                screenState = ActivationScreenState.PENDING
+                                isLoading = true
+                                errorMessage = null
                                 val result = activationManager.requestAccess()
                                 result.onSuccess { response ->
                                     if (response.approved) {
@@ -178,21 +203,51 @@ fun ActivationScreen(
                                         delay(1000)
                                         onActivated()
                                     } else {
+                                        isLoading = false
+                                        screenState = ActivationScreenState.PENDING
+                                        statusMessage = response.message
                                         startStatusPolling(activationManager, onActivated) { statusMessage = it }
                                     }
                                 }.onFailure {
-                                    errorMessage = "Failed to send request"
+                                    isLoading = false
+                                    errorMessage = "Failed to send request: ${it.message}"
                                     screenState = ActivationScreenState.INITIAL
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        enabled = !isLoading
                     ) {
-                        Text("Request Access", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("Request Access", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
                 ActivationScreenState.PENDING -> {
-                    CircularProgressIndicator()
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Waiting for admin approval...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Check the admin dashboard to approve this device",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
                 else -> {}
             }
