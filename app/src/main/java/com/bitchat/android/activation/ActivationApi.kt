@@ -12,7 +12,8 @@ class ActivationApi {
         // Obfuscated API endpoint - split to avoid easy string search
         private val BASE_URL = buildString {
             append("https://")
-            append("your-worker")
+            append("bitchat-activation")
+            append(".batongbakal1016")
             append(".workers.dev")
         }
         private const val TIMEOUT = 10000
