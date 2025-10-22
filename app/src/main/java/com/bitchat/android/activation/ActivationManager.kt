@@ -11,18 +11,23 @@ import java.util.UUID
 
 class ActivationManager(private val context: Context) {
     
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-    
     // Obfuscated preference file name
-    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "app_sys_config",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    private val prefs: SharedPreferences = try {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        
+        EncryptedSharedPreferences.create(
+            context,
+            "app_sys_config",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        // Fallback to regular SharedPreferences if encryption fails
+        context.getSharedPreferences("app_sys_config_fallback", Context.MODE_PRIVATE)
+    }
     
     private val api = ActivationApi()
     
@@ -58,32 +63,37 @@ class ActivationManager(private val context: Context) {
     }
     
     private fun isDeviceCompromised(): Boolean {
-        // Check for root/debugging
-        val buildTags = android.os.Build.TAGS
-        if (buildTags != null && buildTags.contains("test-keys")) {
-            return true
-        }
-        
-        // Check for common root files
-        val paths = arrayOf(
-            "/system/app/Superuser.apk",
-            "/sbin/su",
-            "/system/bin/su",
-            "/system/xbin/su",
-            "/data/local/xbin/su",
-            "/data/local/bin/su",
-            "/system/sd/xbin/su",
-            "/system/bin/failsafe/su",
-            "/data/local/su"
-        )
-        
-        for (path in paths) {
-            if (java.io.File(path).exists()) {
+        return try {
+            // Check for root/debugging
+            val buildTags = android.os.Build.TAGS
+            if (buildTags != null && buildTags.contains("test-keys")) {
                 return true
             }
+            
+            // Check for common root files
+            val paths = arrayOf(
+                "/system/app/Superuser.apk",
+                "/sbin/su",
+                "/system/bin/su",
+                "/system/xbin/su",
+                "/data/local/xbin/su",
+                "/data/local/bin/su",
+                "/system/sd/xbin/su",
+                "/system/bin/failsafe/su",
+                "/data/local/su"
+            )
+            
+            for (path in paths) {
+                if (java.io.File(path).exists()) {
+                    return true
+                }
+            }
+            
+            false
+        } catch (e: Exception) {
+            // If root detection fails, allow access
+            false
         }
-        
-        return false
     }
     
     fun getDeviceId(): String {
