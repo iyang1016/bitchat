@@ -276,17 +276,30 @@ fun ActivationScreen(
                             ),
                             keyboardActions = KeyboardActions(
                                 onDone = {
-                                    scope.launch {
-                                        val result = activationManager.verifyWithCode(activationCode)
-                                        result.onSuccess { success ->
-                                            if (success) {
-                                                screenState = ActivationScreenState.APPROVED
-                                                delay(1000)
-                                                onActivated()
-                                            } else {
-                                                errorMessage = "Invalid code"
+                                    if (activationCode.isNotBlank() && !isLoading) {
+                                        scope.launch {
+                                            isLoading = true
+                                            errorMessage = null
+                                            statusMessage = "Verifying code..."
+                                            
+                                            val result = activationManager.verifyWithCode(activationCode)
+                                            result.onSuccess { success ->
+                                                if (success) {
+                                                    statusMessage = "✅ Code verified! Launching..."
+                                                    screenState = ActivationScreenState.APPROVED
+                                                    delay(800)
+                                                    onActivated()
+                                                } else {
+                                                    isLoading = false
+                                                    errorMessage = "❌ Invalid or expired code"
+                                                    statusMessage = ""
+                                                }
+                                            }.onFailure { 
+                                                isLoading = false
+                                                errorMessage = "❌ Verification failed: ${it.message}"
+                                                statusMessage = ""
                                             }
-                                        }.onFailure { errorMessage = "Verification failed" }
+                                        }
                                     }
                                 }
                             )
@@ -295,22 +308,40 @@ fun ActivationScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    isLoading = true
+                                    errorMessage = null
+                                    statusMessage = "Verifying code..."
+                                    
                                     val result = activationManager.verifyWithCode(activationCode)
                                     result.onSuccess { success ->
                                         if (success) {
+                                            statusMessage = "✅ Code verified! Launching..."
                                             screenState = ActivationScreenState.APPROVED
-                                            delay(1000)
+                                            delay(800)
                                             onActivated()
                                         } else {
-                                            errorMessage = "Invalid code"
+                                            isLoading = false
+                                            errorMessage = "❌ Invalid or expired code"
+                                            statusMessage = ""
                                         }
-                                    }.onFailure { errorMessage = "Verification failed" }
+                                    }.onFailure { 
+                                        isLoading = false
+                                        errorMessage = "❌ Verification failed: ${it.message}"
+                                        statusMessage = ""
+                                    }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = activationCode.isNotBlank()
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            enabled = activationCode.isNotBlank() && !isLoading
                         ) {
-                            Text("Verify Code")
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("Verify Code", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -334,40 +365,46 @@ private fun CoroutineScope.startStatusPolling(
         var attempts = 0
         var shouldStop = false
         
-        // Ultra-fast polling: check IMMEDIATELY, then every 2s for first minute, then 5s, then 15s
+        // ULTRA-FAST polling: check IMMEDIATELY, then every 1s for first 30s, then 3s, then 10s
         while (attempts < 200 && !shouldStop) {
             // Check immediately on first attempt, then delay
             if (attempts > 0) {
                 val delayTime = when {
-                    attempts < 30 -> 2000L  // First minute: check every 2 seconds
-                    attempts < 48 -> 5000L  // Next 90 seconds: check every 5 seconds
-                    else -> 15000L          // After 2.5 minutes: check every 15 seconds
+                    attempts < 30 -> 1000L   // First 30 seconds: check every 1 second (FAST!)
+                    attempts < 60 -> 3000L   // Next 90 seconds: check every 3 seconds
+                    else -> 10000L           // After 2 minutes: check every 10 seconds
                 }
                 delay(delayTime)
             }
             attempts++
             
             try {
-                kotlinx.coroutines.withTimeout(3000) { // 3 second timeout per check
+                kotlinx.coroutines.withTimeout(5000) { // 5 second timeout per check
                     val result = activationManager.checkApprovalStatus()
                     result.onSuccess { status ->
                         if (status.approved) {
                             shouldStop = true
                             onStatusUpdate("✅ Approved! Launching...")
+                        } else if (status.rejected) {
+                            shouldStop = true
+                            onStatusUpdate("❌ Access denied")
                         } else {
                             val elapsed = when {
-                                attempts <= 30 -> attempts * 2
-                                attempts <= 48 -> 60 + (attempts - 30) * 5
-                                else -> 150 + (attempts - 48) * 15
+                                attempts <= 30 -> attempts
+                                attempts <= 60 -> 30 + (attempts - 30) * 3
+                                else -> 120 + (attempts - 60) * 10
                             }
                             onStatusUpdate("⏳ Checking... (${elapsed}s)")
                         }
+                    }.onFailure {
+                        // Network error - show but continue
+                        onStatusUpdate("⚠️ Connection issue, retrying...")
                     }
                 }
                 
                 // If approval was detected, exit the loop and activate
                 if (shouldStop) {
-                    delay(300)
+                    delay(500)
                     onActivated()
                     return@launch
                 }
@@ -376,7 +413,7 @@ private fun CoroutineScope.startStatusPolling(
                 onStatusUpdate("⚠️ Retrying...")
             }
         }
-        onStatusUpdate("⏱️ Timeout. Please restart app.")
+        onStatusUpdate("⏱️ Timeout. Please restart app or use activation code.")
     }
 }
 

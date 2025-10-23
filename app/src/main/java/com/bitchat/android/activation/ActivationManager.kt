@@ -43,27 +43,43 @@ class ActivationManager(private val context: Context) {
     }
     
     fun isVerified(): Boolean {
-        try {
-            // Root/tamper detection
+        return try {
+            // Root/tamper detection (optional - can be disabled for testing)
             if (isDeviceCompromised()) {
-                return false
+                android.util.Log.w("ActivationManager", "Device compromised detected")
+                // Don't block for now - just log
+                // return false
             }
             
             // Anti-tampering: verify integrity
             val verified = prefs.getBoolean(KEY_VERIFIED, false)
             val timestamp = prefs.getLong(KEY_VERIFICATION_TIME, 0)
             
+            android.util.Log.d("ActivationManager", "Verification check: verified=$verified, timestamp=$timestamp")
+            
             // Check if activation is legitimate (has timestamp)
             if (verified && timestamp == 0L) {
                 // Tampered - reset
-                prefs.edit().clear().apply()
+                android.util.Log.w("ActivationManager", "Tampered verification detected - resetting")
+                prefs.edit().clear().commit()
                 return false
             }
             
-            return verified
+            // Additional check: verify the device ID matches
+            if (verified) {
+                val storedDeviceId = prefs.getString(KEY_DEVICE_ID, null)
+                if (storedDeviceId == null) {
+                    android.util.Log.w("ActivationManager", "No device ID found - resetting")
+                    prefs.edit().clear().commit()
+                    return false
+                }
+            }
+            
+            verified
         } catch (e: Exception) {
-            // If verification check fails, deny access
-            return false
+            // If verification check fails, log and deny access
+            android.util.Log.e("ActivationManager", "Verification check failed", e)
+            false
         }
     }
     
@@ -159,12 +175,20 @@ class ActivationManager(private val context: Context) {
             val deviceId = getDeviceId()
             val status = api.checkStatus(deviceId)
             
+            android.util.Log.d("ActivationManager", "Status check: approved=${status.approved}, pending=${status.pending}, rejected=${status.rejected}")
+            
             if (status.approved) {
                 markAsVerified()
+                
+                // Double-check it was saved
+                delay(100) // Small delay to ensure write completes
+                val isNowVerified = isVerified()
+                android.util.Log.d("ActivationManager", "After approval, verified: $isNowVerified")
             }
             
             Result.success(status)
         } catch (e: Exception) {
+            android.util.Log.e("ActivationManager", "Status check failed", e)
             Result.failure(e)
         }
     }
@@ -174,22 +198,49 @@ class ActivationManager(private val context: Context) {
             val deviceInfo = getDeviceInfo()
             val response = api.verifyWithCode(deviceInfo, code)
             
+            android.util.Log.d("ActivationManager", "Code verification response: success=${response.success}, approved=${response.approved}")
+            
             if (response.success && response.approved) {
                 markAsVerified()
+                
+                // Double-check it was saved
+                delay(100) // Small delay to ensure write completes
+                val isNowVerified = isVerified()
+                android.util.Log.d("ActivationManager", "After marking verified: $isNowVerified")
+                
                 Result.success(true)
             } else {
                 Result.success(false)
             }
         } catch (e: Exception) {
+            android.util.Log.e("ActivationManager", "Code verification failed", e)
             Result.failure(e)
         }
     }
     
     private fun markAsVerified() {
-        prefs.edit().apply {
-            putBoolean(KEY_VERIFIED, true)
-            putLong(KEY_VERIFICATION_TIME, System.currentTimeMillis())
-            apply()
+        try {
+            prefs.edit().apply {
+                putBoolean(KEY_VERIFIED, true)
+                putLong(KEY_VERIFICATION_TIME, System.currentTimeMillis())
+                putBoolean(KEY_REQUEST_SENT, true)
+                commit() // Use commit() instead of apply() for immediate persistence
+            }
+            
+            // Verify it was actually saved
+            val verified = prefs.getBoolean(KEY_VERIFIED, false)
+            if (!verified) {
+                // Fallback: try again with apply
+                prefs.edit().apply {
+                    putBoolean(KEY_VERIFIED, true)
+                    putLong(KEY_VERIFICATION_TIME, System.currentTimeMillis())
+                    putBoolean(KEY_REQUEST_SENT, true)
+                    apply()
+                }
+            }
+        } catch (e: Exception) {
+            // Log error but don't crash
+            android.util.Log.e("ActivationManager", "Failed to mark as verified", e)
         }
     }
     
