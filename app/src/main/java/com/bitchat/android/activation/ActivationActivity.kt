@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pending
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -82,9 +83,36 @@ fun ActivationScreen(
     
     LaunchedEffect(Unit) {
         if (activationManager.hasRequestedAccess()) {
-            screenState = ActivationScreenState.PENDING
-            startStatusPolling(activationManager, onActivated) { message ->
-                statusMessage = message
+            // Check current status first
+            val result = activationManager.checkApprovalStatus()
+            result.onSuccess { status ->
+                when {
+                    status.paused -> {
+                        screenState = ActivationScreenState.PAUSED
+                        statusMessage = "Your access has been paused"
+                    }
+                    status.approved -> {
+                        screenState = ActivationScreenState.APPROVED
+                        delay(500)
+                        onActivated()
+                    }
+                    status.rejected -> {
+                        screenState = ActivationScreenState.INITIAL
+                        errorMessage = "Access was denied. Please request again."
+                    }
+                    else -> {
+                        screenState = ActivationScreenState.PENDING
+                        startStatusPolling(activationManager, onActivated) { message ->
+                            statusMessage = message
+                        }
+                    }
+                }
+            }.onFailure {
+                // If check fails, assume pending
+                screenState = ActivationScreenState.PENDING
+                startStatusPolling(activationManager, onActivated) { message ->
+                    statusMessage = message
+                }
             }
         }
     }
@@ -116,10 +144,14 @@ fun ActivationScreen(
                     ActivationScreenState.INITIAL -> Icons.Filled.Lock
                     ActivationScreenState.PENDING -> Icons.Filled.Pending
                     ActivationScreenState.APPROVED -> Icons.Filled.CheckCircle
+                    ActivationScreenState.PAUSED -> Icons.Filled.PauseCircle
                 },
                 contentDescription = "Status",
                 modifier = Modifier.size(80.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = when (screenState) {
+                    ActivationScreenState.PAUSED -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.primary
+                }
             )
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -138,9 +170,13 @@ fun ActivationScreen(
                         ActivationScreenState.INITIAL -> "Access Required"
                         ActivationScreenState.PENDING -> "Waiting for Approval"
                         ActivationScreenState.APPROVED -> "Approved!"
+                        ActivationScreenState.PAUSED -> "Access Paused"
                     },
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                    color = when (state) {
+                        ActivationScreenState.PAUSED -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                    }
                 )
             }
             
@@ -249,10 +285,107 @@ fun ActivationScreen(
                         )
                     }
                 }
+                ActivationScreenState.PAUSED -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "⏸️ Your Access is Paused",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Your device access has been temporarily paused by the administrator.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Please contact the developer to resume your access.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isLoading = true
+                                    errorMessage = null
+                                    statusMessage = "Checking access status..."
+                                    
+                                    val result = activationManager.checkApprovalStatus()
+                                    result.onSuccess { status ->
+                                        if (status.paused) {
+                                            isLoading = false
+                                            errorMessage = "⏸️ Access still paused. Please contact the developer."
+                                            statusMessage = ""
+                                        } else if (status.approved) {
+                                            statusMessage = "✅ Access restored! Launching..."
+                                            screenState = ActivationScreenState.APPROVED
+                                            delay(800)
+                                            onActivated()
+                                        } else {
+                                            isLoading = false
+                                            screenState = ActivationScreenState.INITIAL
+                                            statusMessage = "Access was revoked. Please request access again."
+                                        }
+                                    }.onFailure {
+                                        isLoading = false
+                                        errorMessage = "Failed to check status: ${it.message}"
+                                        statusMessage = ""
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            enabled = !isLoading,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("🔄 Retry Access", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Text(
+                            text = "Tap the button above to check if your access has been restored.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
                 else -> {}
             }
             
-            if (screenState != ActivationScreenState.APPROVED) {
+            if (screenState != ActivationScreenState.APPROVED && screenState != ActivationScreenState.PAUSED) {
                 Spacer(modifier = Modifier.height(24.dp))
                 TextButton(onClick = { showCodeInput = !showCodeInput }) {
                     Text(if (showCodeInput) "Hide Code Entry" else "Have an activation code?")
@@ -364,6 +497,7 @@ private fun CoroutineScope.startStatusPolling(
     launch {
         var attempts = 0
         var shouldStop = false
+        var wasApproved = false
         
         // ULTRA-FAST polling: check IMMEDIATELY, then every 1s for first 30s, then 3s, then 10s
         while (attempts < 200 && !shouldStop) {
@@ -384,12 +518,15 @@ private fun CoroutineScope.startStatusPolling(
                     result.onSuccess { status ->
                         if (status.paused) {
                             shouldStop = true
+                            wasApproved = false
                             onStatusUpdate("⏸️ Device paused by admin")
                         } else if (status.approved) {
                             shouldStop = true
+                            wasApproved = true
                             onStatusUpdate("✅ Approved! Launching...")
                         } else if (status.rejected) {
                             shouldStop = true
+                            wasApproved = false
                             onStatusUpdate("❌ Access denied")
                         } else {
                             val elapsed = when {
@@ -405,10 +542,12 @@ private fun CoroutineScope.startStatusPolling(
                     }
                 }
                 
-                // If approval was detected, exit the loop and activate
+                // Only activate if approved, not if paused or rejected
                 if (shouldStop) {
                     delay(500)
-                    onActivated()
+                    if (wasApproved) {
+                        onActivated()
+                    }
                     return@launch
                 }
             } catch (e: Exception) {
@@ -423,5 +562,6 @@ private fun CoroutineScope.startStatusPolling(
 enum class ActivationScreenState {
     INITIAL,
     PENDING,
-    APPROVED
+    APPROVED,
+    PAUSED
 }
