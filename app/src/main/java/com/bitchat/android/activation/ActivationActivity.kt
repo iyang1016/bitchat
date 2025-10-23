@@ -382,7 +382,10 @@ private fun CoroutineScope.startStatusPolling(
                 kotlinx.coroutines.withTimeout(5000) { // 5 second timeout per check
                     val result = activationManager.checkApprovalStatus()
                     result.onSuccess { status ->
-                        if (status.approved) {
+                        if (status.paused) {
+                            shouldStop = true
+                            onStatusUpdate("⏸️ Device paused by admin")
+                        } else if (status.approved) {
                             shouldStop = true
                             onStatusUpdate("✅ Approved! Launching...")
                         } else if (status.rejected) {

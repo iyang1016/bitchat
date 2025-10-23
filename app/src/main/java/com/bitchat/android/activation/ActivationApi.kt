@@ -87,6 +87,7 @@ class ActivationApi {
                 approved = json.optBoolean("approved", false),
                 pending = json.optBoolean("pending", false),
                 rejected = json.optBoolean("rejected", false),
+                paused = json.optBoolean("paused", false),
                 message = json.optString("message", "")
             )
         } catch (e: Exception) {

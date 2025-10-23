@@ -175,7 +175,13 @@ class ActivationManager(private val context: Context) {
             val deviceId = getDeviceId()
             val status = api.checkStatus(deviceId)
             
-            android.util.Log.d("ActivationManager", "Status check: approved=${status.approved}, pending=${status.pending}, rejected=${status.rejected}")
+            android.util.Log.d("ActivationManager", "Status check: approved=${status.approved}, pending=${status.pending}, rejected=${status.rejected}, paused=${status.paused}")
+            
+            // If device is paused, revoke local verification
+            if (status.paused) {
+                android.util.Log.w("ActivationManager", "Device is paused - revoking local access")
+                prefs.edit().putBoolean(KEY_VERIFIED, false).commit()
+            }
             
             if (status.approved) {
                 markAsVerified()
@@ -270,5 +276,6 @@ data class ApprovalStatus(
     val approved: Boolean,
     val pending: Boolean,
     val rejected: Boolean = false,
+    val paused: Boolean = false,
     val message: String = ""
 )

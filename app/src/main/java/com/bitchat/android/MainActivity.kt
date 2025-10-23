@@ -76,6 +76,27 @@ class MainActivity : OrientationAwareActivity() {
             return
         }
         
+        // SECURITY: Periodic verification check (every 30 seconds)
+        lifecycleScope.launch {
+            while (true) {
+                delay(30000) // Check every 30 seconds
+                try {
+                    val result = activationManager.checkApprovalStatus()
+                    result.onSuccess { status ->
+                        if (status.paused || status.rejected || !status.approved) {
+                            Log.w("MainActivity", "Device access revoked/paused - redirecting to activation")
+                            // Access revoked - redirect to activation screen
+                            startActivity(Intent(this@MainActivity, com.bitchat.android.activation.ActivationActivity::class.java))
+                            finish()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Periodic verification check failed", e)
+                    // Don't kick user out on network errors
+                }
+            }
+        }
+        
         // Enable edge-to-edge display for modern Android look
         enableEdgeToEdge()
 
